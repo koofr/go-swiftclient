@@ -1,7 +1,7 @@
 package swiftclient_test
 
 import (
-	. "git.koofr.lan/go-swiftclient.git"
+	. "github.com/koofr/go-swiftclient"
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 	"time"

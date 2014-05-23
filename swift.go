@@ -2,8 +2,8 @@ package swiftclient
 
 import (
 	"fmt"
-	"git.koofr.lan/go-httpclient.git"
-	"git.koofr.lan/go-ioutils.git"
+	"github.com/koofr/go-httpclient"
+	"github.com/koofr/go-ioutils"
 	"io"
 	"net/http"
 	"net/url"
