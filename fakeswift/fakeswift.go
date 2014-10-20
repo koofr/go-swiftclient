@@ -8,7 +8,9 @@ import (
 )
 
 type FakeSwift struct {
-	cmd *exec.Cmd
+	cmd           *exec.Cmd
+	stdoutScanner *bufio.Scanner
+	stderrScanner *bufio.Scanner
 }
 
 func NewFakeSwift(port int) (f *FakeSwift, err error) {
@@ -43,17 +45,36 @@ func NewFakeSwift(port int) (f *FakeSwift, err error) {
 	stdin.Write([]byte(fmt.Sprintf(FakeSwiftJs, port)))
 	stdin.Close()
 
-	scanner := bufio.NewScanner(stdout)
+	stdoutScanner := bufio.NewScanner(stdout)
 
-	if sc := scanner.Scan(); !sc || scanner.Text() != "RUNNING" {
+	if sc := stdoutScanner.Scan(); !sc || stdoutScanner.Text() != "RUNNING" {
 		errMsg, _ := ioutil.ReadAll(stderr)
 		err = fmt.Errorf("error running fakeswift: %s", string(errMsg))
 		return
 	}
+
+	stderrScanner := bufio.NewScanner(stderr)
+
+	f.stdoutScanner = stdoutScanner
+	f.stderrScanner = stderrScanner
 
 	return
 }
 
 func (f *FakeSwift) Close() (err error) {
 	return f.cmd.Process.Kill()
+}
+
+func (f *FakeSwift) Verbose() {
+	go func() {
+		for f.stdoutScanner.Scan() {
+			fmt.Println("[FakeSwift] " + f.stdoutScanner.Text())
+		}
+	}()
+
+	go func() {
+		for f.stderrScanner.Scan() {
+			fmt.Println("[FakeSwift] " + f.stderrScanner.Text())
+		}
+	}()
 }
