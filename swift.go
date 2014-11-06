@@ -11,7 +11,11 @@ import (
 )
 
 type Swift struct {
-	HTTPClient *httpclient.HTTPClient
+	HTTPClient        *httpclient.HTTPClient
+	canReauthenticate bool
+	endpoint          string
+	user              string
+	key               string
 }
 
 func NewSwift() (swift *Swift) {
@@ -64,11 +68,44 @@ func (s *Swift) AuthenticateV1(endpoint string, user string, key string) (err er
 
 	s.HTTPClient.BaseURL = u
 
+	s.canReauthenticate = true
+	s.endpoint = endpoint
+	s.user = user
+	s.key = key
+
 	return
 }
 
+func (s *Swift) Reauthenticate() (err error) {
+	if !s.canReauthenticate {
+		return fmt.Errorf("Swift not authenticated yet")
+	}
+
+	return s.AuthenticateV1(s.endpoint, s.user, s.key)
+}
+
+func (s *Swift) canRetryRequest(req *httpclient.RequestData) bool {
+	return req.ReqReader == nil
+}
+
 func (s *Swift) Request(req *httpclient.RequestData) (response *http.Response, err error) {
-	return s.HTTPClient.Request(req)
+	res, err := s.HTTPClient.Request(req)
+
+	if res != nil && res.StatusCode == 401 {
+		reauthErr := s.Reauthenticate()
+
+		if reauthErr != nil {
+			return res, err // must return err, not reauthErr
+		}
+
+		if s.canRetryRequest(req) {
+			res, err = s.HTTPClient.Request(req)
+
+			return res, err
+		}
+	}
+
+	return res, err
 }
 
 func (s *Swift) Path(container string, path string) string {

@@ -33,7 +33,9 @@ var _ = Describe("Swift", func() {
 	})
 
 	AfterEach(func() {
-		fakeSwift.Close()
+		if fakeSwift != nil {
+			fakeSwift.Close()
+		}
 	})
 
 	authenticate := func() {
@@ -46,6 +48,46 @@ var _ = Describe("Swift", func() {
 		It("should authenticate", func() {
 			authenticate()
 			Expect("").To(Equal(""))
+		})
+
+		It("should reauthenticate", func() {
+			authenticate()
+
+			err := swift.PutObject(container, "f1", bytes.NewBufferString("12345"))
+			Expect(err).NotTo(HaveOccurred())
+
+			// swift will forget auth token, client should reauthenticate
+
+			fakeSwift.Close()
+
+			fakeSwift, err = fakeswift.NewFakeSwift(port)
+			Expect(err).NotTo(HaveOccurred())
+
+			// first PUT must fail because we cannot cache request reader
+			err = swift.PutObject(container, "f2", bytes.NewBufferString("12345"))
+			Expect(err).To(HaveOccurred())
+
+			// second PUT must not fail, because we reauthenticated
+			err = swift.PutObject(container, "f2", bytes.NewBufferString("12345"))
+			Expect(err).NotTo(HaveOccurred())
+		})
+
+		It("should reauthenticate and retry idempotent requests", func() {
+			authenticate()
+
+			_, err := swift.ListObjects(container, "/", true)
+			Expect(err).NotTo(HaveOccurred())
+
+			// swift will forget auth token, client should reauthenticate
+
+			fakeSwift.Close()
+
+			fakeSwift, err = fakeswift.NewFakeSwift(port)
+			Expect(err).NotTo(HaveOccurred())
+
+			// GET must not fail because it's an idempotent request and can be repeated
+			_, err = swift.ListObjects(container, "/", true)
+			Expect(err).NotTo(HaveOccurred())
 		})
 	})
 
