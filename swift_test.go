@@ -26,6 +26,18 @@ var _ = Describe("Swift", func() {
 		Expect(err).NotTo(HaveOccurred())
 	}
 
+	objectNames := func(objects []*SwiftObject) []string {
+		names := make([]string, len(objects))
+		for i, object := range objects {
+			if object.Subdir == "" {
+				names[i] = object.Name
+			} else {
+				names[i] = "subdir:" + object.Subdir
+			}
+		}
+		return names
+	}
+
 	BeforeEach(func() {
 		ctx = context.Background()
 
@@ -79,6 +91,71 @@ var _ = Describe("Swift", func() {
 	})
 
 	Describe("API", func() {
+		Describe("ListObjects", func() {
+			It("should list objects (non-recursive)", func() {
+				err := swift.PutObject(ctx, container, "test/file1.txt", bytes.NewBufferString("12345"))
+				Expect(err).NotTo(HaveOccurred())
+
+				objects, err := swift.ListObjects(ctx, container, "", false)
+				Expect(err).NotTo(HaveOccurred())
+				Expect(objectNames(objects)).To(Equal([]string{"file.txt", "subdir:test/"}))
+			})
+
+			It("should list objects (non-recursive, path)", func() {
+				err := swift.PutObject(ctx, container, "test/file1.txt", bytes.NewBufferString("12345"))
+				Expect(err).NotTo(HaveOccurred())
+				err = swift.PutObject(ctx, container, "test1/file2.txt", bytes.NewBufferString("12345"))
+				Expect(err).NotTo(HaveOccurred())
+
+				objects, err := swift.ListObjects(ctx, container, "test", false)
+				Expect(err).NotTo(HaveOccurred())
+				Expect(objectNames(objects)).To(Equal([]string{"test/file1.txt"}))
+			})
+
+			It("should list objects (recursive)", func() {
+				err := swift.PutObject(ctx, container, "test/file1.txt", bytes.NewBufferString("12345"))
+				Expect(err).NotTo(HaveOccurred())
+
+				objects, err := swift.ListObjects(ctx, container, "", true)
+				Expect(err).NotTo(HaveOccurred())
+				Expect(objectNames(objects)).To(Equal([]string{"file.txt", "test/file1.txt"}))
+			})
+		})
+
+		Describe("ListObjectsMarker", func() {
+			It("should list objects", func() {
+				err := swift.PutObject(ctx, container, "test/file1.txt", bytes.NewBufferString("12345"))
+				Expect(err).NotTo(HaveOccurred())
+				err = swift.PutObject(ctx, container, "test/file2.txt", bytes.NewBufferString("12345"))
+				Expect(err).NotTo(HaveOccurred())
+
+				objects, err := swift.ListObjectsMarker(ctx, container, "", "", 2, "")
+				Expect(err).NotTo(HaveOccurred())
+				Expect(objectNames(objects)).To(Equal([]string{"file.txt", "test/file1.txt"}))
+
+				objects, err = swift.ListObjectsMarker(ctx, container, "", "", 2, "test/file1.txt")
+				Expect(err).NotTo(HaveOccurred())
+				Expect(objectNames(objects)).To(Equal([]string{"test/file2.txt"}))
+			})
+
+			It("should list objects with prefix and delimiter", func() {
+				err := swift.PutObject(ctx, container, "test/file1.txt", bytes.NewBufferString("12345"))
+				Expect(err).NotTo(HaveOccurred())
+				err = swift.PutObject(ctx, container, "test/file2.txt", bytes.NewBufferString("12345"))
+				Expect(err).NotTo(HaveOccurred())
+				err = swift.PutObject(ctx, container, "test/file3.txt", bytes.NewBufferString("12345"))
+				Expect(err).NotTo(HaveOccurred())
+
+				objects, err := swift.ListObjectsMarker(ctx, container, "test/", "/", 2, "")
+				Expect(err).NotTo(HaveOccurred())
+				Expect(objectNames(objects)).To(Equal([]string{"test/file1.txt", "test/file2.txt"}))
+
+				objects, err = swift.ListObjectsMarker(ctx, container, "", "", 2, "test/file2.txt")
+				Expect(err).NotTo(HaveOccurred())
+				Expect(objectNames(objects)).To(Equal([]string{"test/file3.txt"}))
+			})
+		})
+
 		Describe("ObjectInfo", func() {
 			It("should get object info", func() {
 				info, err := swift.ObjectInfo(ctx, container, "file.txt")

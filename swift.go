@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 
 	"github.com/koofr/go-httpclient"
@@ -154,6 +155,39 @@ func (s *Swift) ListObjects(ctx context.Context, container string, path string, 
 	if !recursive {
 		params.Set("delimiter", "/")
 	}
+
+	_, err = s.Request(&httpclient.RequestData{
+		Context:        ctx,
+		Method:         "GET",
+		Path:           s.Path(container, ""),
+		Params:         params,
+		ExpectedStatus: []int{http.StatusOK},
+		RespEncoding:   httpclient.EncodingJSON,
+		RespValue:      &objects,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	return objects, nil
+}
+
+func (s *Swift) ListObjectsMarker(
+	ctx context.Context,
+	container string,
+	prefix string,
+	delimiter string,
+	limit int,
+	marker string,
+) (objects []*SwiftObject, err error) {
+	objects = []*SwiftObject{}
+
+	params := make(url.Values)
+	params.Set("format", "json")
+	params.Set("prefix", prefix)
+	params.Set("delimiter", delimiter)
+	params.Set("limit", strconv.Itoa(limit))
+	params.Set("marker", marker)
 
 	_, err = s.Request(&httpclient.RequestData{
 		Context:        ctx,
