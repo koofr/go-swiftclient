@@ -1,13 +1,15 @@
 package swiftclient
 
 import (
+	"context"
 	"fmt"
-	"github.com/koofr/go-httpclient"
-	"github.com/koofr/go-ioutils"
 	"io"
 	"net/http"
 	"net/url"
 	"strings"
+
+	"github.com/koofr/go-httpclient"
+	"github.com/koofr/go-ioutils"
 )
 
 type Swift struct {
@@ -24,12 +26,13 @@ func NewSwift() (swift *Swift) {
 	}
 }
 
-func (s *Swift) AuthenticateV1(endpoint string, user string, key string) (err error) {
+func (s *Swift) AuthenticateV1(ctx context.Context, endpoint string, user string, key string) (err error) {
 	headers := make(http.Header)
 	headers.Set("X-Auth-User", user)
 	headers.Set("X-Auth-Key", key)
 
 	req := httpclient.RequestData{
+		Context:     ctx,
 		Method:      "GET",
 		FullURL:     endpoint,
 		Headers:     headers,
@@ -37,9 +40,8 @@ func (s *Swift) AuthenticateV1(endpoint string, user string, key string) (err er
 	}
 
 	res, err := s.HTTPClient.Request(&req)
-
 	if err != nil {
-		return
+		return err
 	}
 
 	storageURL := res.Header.Get("X-Storage-Url")
@@ -50,8 +52,7 @@ func (s *Swift) AuthenticateV1(endpoint string, user string, key string) (err er
 	}
 
 	if storageURL == "" || authToken == "" {
-		err = fmt.Errorf("swift authentication failed")
-		return
+		return fmt.Errorf("swift authentication failed")
 	}
 
 	s.HTTPClient.Headers.Set("X-Auth-Token", authToken)
@@ -61,9 +62,8 @@ func (s *Swift) AuthenticateV1(endpoint string, user string, key string) (err er
 	}
 
 	u, err := url.Parse(storageURL)
-
 	if err != nil {
-		return
+		return err
 	}
 
 	s.HTTPClient.BaseURL = u
@@ -73,15 +73,15 @@ func (s *Swift) AuthenticateV1(endpoint string, user string, key string) (err er
 	s.user = user
 	s.key = key
 
-	return
+	return nil
 }
 
-func (s *Swift) Reauthenticate() (err error) {
+func (s *Swift) Reauthenticate(ctx context.Context) (err error) {
 	if !s.canReauthenticate {
 		return fmt.Errorf("Swift not authenticated yet")
 	}
 
-	return s.AuthenticateV1(s.endpoint, s.user, s.key)
+	return s.AuthenticateV1(ctx, s.endpoint, s.user, s.key)
 }
 
 func (s *Swift) canRetryRequest(req *httpclient.RequestData) bool {
@@ -92,8 +92,12 @@ func (s *Swift) Request(req *httpclient.RequestData) (response *http.Response, e
 	res, err := s.HTTPClient.Request(req)
 
 	if res != nil && res.StatusCode == 401 {
-		reauthErr := s.Reauthenticate()
+		ctx := req.Context
+		if ctx == nil {
+			ctx = context.TODO()
+		}
 
+		reauthErr := s.Reauthenticate(ctx)
 		if reauthErr != nil {
 			return res, err // must return err, not reauthErr
 		}
@@ -118,18 +122,22 @@ func (s *Swift) Path(container string, path string) string {
 	return p
 }
 
-func (s *Swift) PutContainer(container string) (err error) {
+func (s *Swift) PutContainer(ctx context.Context, container string) (err error) {
 	_, err = s.Request(&httpclient.RequestData{
+		Context:        ctx,
 		Method:         "PUT",
 		Path:           s.Path(container, ""),
 		ExpectedStatus: []int{http.StatusCreated, http.StatusAccepted},
 		RespConsume:    true,
 	})
+	if err != nil {
+		return err
+	}
 
-	return
+	return nil
 }
 
-func (s *Swift) ListObjects(container string, path string, recursive bool) (objects []*SwiftObject, err error) {
+func (s *Swift) ListObjects(ctx context.Context, container string, path string, recursive bool) (objects []*SwiftObject, err error) {
 	objects = []*SwiftObject{}
 
 	params := make(url.Values)
@@ -148,6 +156,7 @@ func (s *Swift) ListObjects(container string, path string, recursive bool) (obje
 	}
 
 	_, err = s.Request(&httpclient.RequestData{
+		Context:        ctx,
 		Method:         "GET",
 		Path:           s.Path(container, ""),
 		Params:         params,
@@ -155,29 +164,33 @@ func (s *Swift) ListObjects(container string, path string, recursive bool) (obje
 		RespEncoding:   httpclient.EncodingJSON,
 		RespValue:      &objects,
 	})
+	if err != nil {
+		return nil, err
+	}
 
-	return
+	return objects, nil
 }
 
-func (s *Swift) ObjectInfo(container string, path string) (info *SwiftObject, err error) {
+func (s *Swift) ObjectInfo(ctx context.Context, container string, path string) (info *SwiftObject, err error) {
 	res, err := s.Request(&httpclient.RequestData{
+		Context:        ctx,
 		Method:         "HEAD",
 		Path:           s.Path(container, path),
 		ExpectedStatus: []int{http.StatusOK},
 		RespConsume:    true,
 	})
-
 	if err != nil {
-		return
+		return nil, err
 	}
 
 	info = SwiftObjectFromHeaders(path, res.Header)
 
-	return
+	return info, nil
 }
 
-func (s *Swift) GetObject(container string, path string, span *ioutils.FileSpan) (obj *SwiftObject, err error) {
+func (s *Swift) GetObject(ctx context.Context, container string, path string, span *ioutils.FileSpan) (obj *SwiftObject, err error) {
 	req := httpclient.RequestData{
+		Context:        ctx,
 		Method:         "GET",
 		Path:           s.Path(container, path),
 		ExpectedStatus: []int{http.StatusOK, http.StatusPartialContent},
@@ -189,31 +202,35 @@ func (s *Swift) GetObject(container string, path string, span *ioutils.FileSpan)
 	}
 
 	res, err := s.Request(&req)
-
 	if err != nil {
-		return
+		return nil, err
 	}
 
 	obj = SwiftObjectFromHeaders(path, res.Header)
 	obj.Reader = res.Body
 
-	return
+	return obj, nil
 }
 
-func (s *Swift) PutObject(container string, path string, reader io.Reader) (err error) {
+func (s *Swift) PutObject(ctx context.Context, container string, path string, reader io.Reader) (err error) {
 	_, err = s.Request(&httpclient.RequestData{
+		Context:        ctx,
 		Method:         "PUT",
 		Path:           s.Path(container, path),
 		ReqReader:      reader,
 		ExpectedStatus: []int{http.StatusCreated},
 		RespConsume:    true,
 	})
+	if err != nil {
+		return err
+	}
 
-	return
+	return nil
 }
 
-func (s *Swift) PutObjectManifest(container string, path string, manifestContainer string, manifestPath string) (err error) {
+func (s *Swift) PutObjectManifest(ctx context.Context, container string, path string, manifestContainer string, manifestPath string) (err error) {
 	req := httpclient.RequestData{
+		Context:        ctx,
 		Method:         "PUT",
 		Path:           s.Path(container, path),
 		Headers:        make(http.Header),
@@ -225,17 +242,24 @@ func (s *Swift) PutObjectManifest(container string, path string, manifestContain
 	req.Headers.Set("X-Object-Manifest", manifest)
 
 	_, err = s.Request(&req)
+	if err != nil {
+		return err
+	}
 
-	return
+	return nil
 }
 
-func (s *Swift) DeleteObject(container string, path string) (err error) {
+func (s *Swift) DeleteObject(ctx context.Context, container string, path string) (err error) {
 	_, err = s.Request(&httpclient.RequestData{
+		Context:        ctx,
 		Method:         "DELETE",
 		Path:           s.Path(container, path),
 		ExpectedStatus: []int{http.StatusNoContent},
 		RespConsume:    true,
 	})
+	if err != nil {
+		return err
+	}
 
-	return
+	return nil
 }

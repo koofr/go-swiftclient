@@ -2,18 +2,21 @@ package swiftclient_test
 
 import (
 	"bytes"
+	"context"
 	"fmt"
+	"io/ioutil"
+	"time"
+
 	"github.com/koofr/go-ioutils"
 	"github.com/koofr/go-netutils"
 	. "github.com/koofr/go-swiftclient"
 	"github.com/koofr/go-swiftclient/fakeswift"
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
-	"io/ioutil"
-	"time"
 )
 
 var _ = Describe("Swift", func() {
+	var ctx context.Context
 	var port int
 	var fakeSwift *fakeswift.FakeSwift
 	var swift *Swift
@@ -22,6 +25,8 @@ var _ = Describe("Swift", func() {
 
 	BeforeEach(func() {
 		var err error
+
+		ctx = context.Background()
 
 		port, err = netutils.UnusedPort()
 		Expect(err).NotTo(HaveOccurred())
@@ -40,7 +45,7 @@ var _ = Describe("Swift", func() {
 
 	authenticate := func() {
 		url := fmt.Sprintf("http://localhost:%d/auth/v1.0", port)
-		err := swift.AuthenticateV1(url, "test:tester", "testing")
+		err := swift.AuthenticateV1(ctx, url, "test:tester", "testing")
 		Expect(err).NotTo(HaveOccurred())
 	}
 
@@ -53,7 +58,7 @@ var _ = Describe("Swift", func() {
 		It("should reauthenticate", func() {
 			authenticate()
 
-			err := swift.PutObject(container, "f1", bytes.NewBufferString("12345"))
+			err := swift.PutObject(ctx, container, "f1", bytes.NewBufferString("12345"))
 			Expect(err).NotTo(HaveOccurred())
 
 			// swift will forget auth token, client should reauthenticate
@@ -64,18 +69,18 @@ var _ = Describe("Swift", func() {
 			Expect(err).NotTo(HaveOccurred())
 
 			// first PUT must fail because we cannot cache request reader
-			err = swift.PutObject(container, "f2", bytes.NewBufferString("12345"))
+			err = swift.PutObject(ctx, container, "f2", bytes.NewBufferString("12345"))
 			Expect(err).To(HaveOccurred())
 
 			// second PUT must not fail, because we reauthenticated
-			err = swift.PutObject(container, "f2", bytes.NewBufferString("12345"))
+			err = swift.PutObject(ctx, container, "f2", bytes.NewBufferString("12345"))
 			Expect(err).NotTo(HaveOccurred())
 		})
 
 		It("should reauthenticate and retry idempotent requests", func() {
 			authenticate()
 
-			_, err := swift.ListObjects(container, "/", true)
+			_, err := swift.ListObjects(ctx, container, "/", true)
 			Expect(err).NotTo(HaveOccurred())
 
 			// swift will forget auth token, client should reauthenticate
@@ -86,7 +91,7 @@ var _ = Describe("Swift", func() {
 			Expect(err).NotTo(HaveOccurred())
 
 			// GET must not fail because it's an idempotent request and can be repeated
-			_, err = swift.ListObjects(container, "/", true)
+			_, err = swift.ListObjects(ctx, container, "/", true)
 			Expect(err).NotTo(HaveOccurred())
 		})
 	})
@@ -98,7 +103,7 @@ var _ = Describe("Swift", func() {
 
 		Describe("ObjectInfo", func() {
 			It("should get object info", func() {
-				info, err := swift.ObjectInfo(container, "file.txt")
+				info, err := swift.ObjectInfo(ctx, container, "file.txt")
 
 				Expect(err).NotTo(HaveOccurred())
 
@@ -116,7 +121,7 @@ var _ = Describe("Swift", func() {
 
 		Describe("GetObject", func() {
 			It("should get object", func() {
-				obj, err := swift.GetObject(container, "file.txt", nil)
+				obj, err := swift.GetObject(ctx, container, "file.txt", nil)
 
 				Expect(err).NotTo(HaveOccurred())
 
@@ -142,7 +147,7 @@ var _ = Describe("Swift", func() {
 			})
 
 			It("should get object with slash in name", func() {
-				obj, err := swift.GetObject(container, "dir1/file1.txt", nil)
+				obj, err := swift.GetObject(ctx, container, "dir1/file1.txt", nil)
 
 				Expect(err).NotTo(HaveOccurred())
 
@@ -153,7 +158,7 @@ var _ = Describe("Swift", func() {
 
 			It("should get object range", func() {
 				span := &ioutils.FileSpan{2, 3}
-				obj, err := swift.GetObject(container, "file.txt", span)
+				obj, err := swift.GetObject(ctx, container, "file.txt", span)
 
 				Expect(err).NotTo(HaveOccurred())
 
@@ -170,10 +175,10 @@ var _ = Describe("Swift", func() {
 			It("should put object", func() {
 				body := bytes.NewBufferString("12345")
 
-				err := swift.PutObject(container, "new-file.txt", body)
+				err := swift.PutObject(ctx, container, "new-file.txt", body)
 				Expect(err).NotTo(HaveOccurred())
 
-				info, err := swift.ObjectInfo(container, "new-file.txt")
+				info, err := swift.ObjectInfo(ctx, container, "new-file.txt")
 				Expect(err).NotTo(HaveOccurred())
 
 				Expect(info.Bytes).To(Equal(int64(5)))
@@ -182,23 +187,23 @@ var _ = Describe("Swift", func() {
 			It("should not put object if body is broken", func() {
 				body := &ioutils.ErrorReader{fmt.Errorf("Broken body")}
 
-				err := swift.PutObject(container, "error.txt", body)
+				err := swift.PutObject(ctx, container, "error.txt", body)
 				Expect(err).To(HaveOccurred())
 			})
 		})
 
 		Describe("PutObjectManifest", func() {
 			It("should put object manifest", func() {
-				err := swift.PutObject(container, "segments/new-file/00001", bytes.NewBufferString("01234"))
+				err := swift.PutObject(ctx, container, "segments/new-file/00001", bytes.NewBufferString("01234"))
 				Expect(err).NotTo(HaveOccurred())
 
-				err = swift.PutObject(container, "segments/new-file/00002", bytes.NewBufferString("56789"))
+				err = swift.PutObject(ctx, container, "segments/new-file/00002", bytes.NewBufferString("56789"))
 				Expect(err).NotTo(HaveOccurred())
 
-				err = swift.PutObjectManifest(container, "new-file.txt", container, "segments/new-file")
+				err = swift.PutObjectManifest(ctx, container, "new-file.txt", container, "segments/new-file")
 				Expect(err).NotTo(HaveOccurred())
 
-				info, err := swift.ObjectInfo(container, "new-file.txt")
+				info, err := swift.ObjectInfo(ctx, container, "new-file.txt")
 				Expect(err).NotTo(HaveOccurred())
 
 				Expect(info.Bytes).To(Equal(int64(10)))
@@ -207,10 +212,10 @@ var _ = Describe("Swift", func() {
 
 		Describe("DeleteObject", func() {
 			It("should delete object", func() {
-				err := swift.DeleteObject(container, "file.txt")
+				err := swift.DeleteObject(ctx, container, "file.txt")
 				Expect(err).NotTo(HaveOccurred())
 
-				_, err = swift.ObjectInfo(container, "file.txt")
+				_, err = swift.ObjectInfo(ctx, container, "file.txt")
 				Expect(err).To(HaveOccurred())
 			})
 		})
