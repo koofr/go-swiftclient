@@ -5,8 +5,3 @@
 *.o
 *.a
 *.so
-
-# developer specific
-*.sublime-workspace
-*.sublime-project
-node_modules

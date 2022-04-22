@@ -1,10 +1,11 @@
 package swiftclient_test
 
 import (
+	"time"
+
 	. "github.com/koofr/go-swiftclient"
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
-	"time"
 )
 
 var _ = Describe("Types", func() {

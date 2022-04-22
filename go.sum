@@ -23,6 +23,8 @@ github.com/google/go-cmp v0.4.0/go.mod h1:v8dTdLbMG2kIc/vJvl+f65V22dbkXbowE6jgT/
 github.com/google/go-cmp v0.5.5 h1:Khx7svrCpmxxtHBq5j2mp/xVjsi8hQMfNLvJFAlrGgU=
 github.com/google/go-cmp v0.5.5/go.mod h1:v8dTdLbMG2kIc/vJvl+f65V22dbkXbowE6jgT/gNBxE=
 github.com/google/pprof v0.0.0-20210407192527-94a9f03dee38/go.mod h1:kpwsk12EmLew5upagYY7GY0pfYCcupk39gWOCRROcvE=
+github.com/google/uuid v1.3.0 h1:t6JiXgmwXMjEs8VusXIJk2BXHsn+wx8BZdTaoZ5fu7I=
+github.com/google/uuid v1.3.0/go.mod h1:TIyPZe4MgqvfeYDBFedMoGGpEw/LqOeaOT+nhxU+yHo=
 github.com/hpcloud/tail v1.0.0/go.mod h1:ab1qPbhIpdTxEkNHXyeSf5vhxWSCs/tWer42PpOxQnU=
 github.com/ianlancetaylor/demangle v0.0.0-20200824232613-28f6c0f3b639/go.mod h1:aSSvb/t6k1mPoxDqO4vJh6VOCGPwU4O0C2/Eqndh1Sc=
 github.com/koofr/go-cryptoutils v0.0.0-20151104083704-fe224388747f h1:gIGkmbVGurfwh12Cng+9wEMJrNr5sliN+eqniEpJh4w=
@@ -31,8 +33,6 @@ github.com/koofr/go-httpclient v0.0.0-20200420163713-93aa7c75b348 h1:Lrn8srO9JDB
 github.com/koofr/go-httpclient v0.0.0-20200420163713-93aa7c75b348/go.mod h1:JBLy//Q5jzU3XSMxdONTD5EIj1LhTPktosxG2Bw1iho=
 github.com/koofr/go-ioutils v0.0.0-20220315081721-2731b631e859 h1:R2NJ2ddxFSz+TCD4m/mdXENMtOENfAhpJSAXv7479cM=
 github.com/koofr/go-ioutils v0.0.0-20220315081721-2731b631e859/go.mod h1:Tw+/y8xxRznlC0qnwsUdiUxax+MBez/FMrpxLBwQecQ=
-github.com/koofr/go-netutils v0.0.0-20150109181258-a882ff2660b6 h1:y+TG7IwagsvCSLOd5QKCEInabOmbjeNxQFUhx5BaX7A=
-github.com/koofr/go-netutils v0.0.0-20150109181258-a882ff2660b6/go.mod h1:p78zyqC82aE/U1IBJqr4wFlPnv55YuGOoqcmb00tpI4=
 github.com/koofr/pb v0.0.0-20200512084736-1389bea13f8d h1:vyWfdsOEs9xbsrrrVHUvbD3GUGYGVv1l8o2jDkHsNow=
 github.com/koofr/pb v0.0.0-20200512084736-1389bea13f8d/go.mod h1:ujpLybcBpDfIhg4kX2jRznnIVW3w3dxKxoXzDTN45aM=
 github.com/nxadm/tail v1.4.4/go.mod h1:kenIhsEOeOJmVchQTgglprH7qJGnHDVpk1VPCcaMI8A=

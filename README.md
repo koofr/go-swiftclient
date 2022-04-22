@@ -7,14 +7,18 @@ Go OpenStack Swift client.
 
 ## Install
 
-    go get github.com/koofr/go-swiftclient
+```sh
+go get github.com/koofr/go-swiftclient
+```
 
 ## Testing
 
-To run tests you will need to install Node.js and `light-swift` package.
+To run tests you will need to run a test Ceph RGW docker container:
 
-    mkdir node_modules
-    npm install light-swift
+```sh
+docker run --rm -it -p 8080:8080 bancek/ceph-rgw-swift-test:0.1.0-nautilus
 
-    go get -t
-    go test
+sh -c 'while ! curl --fail -H "X-Auth-User: test:test" -H "X-Auth-Key: test" http://localhost:8080/auth/v1.0 2>/dev/null; do echo "waiting for swift" && sleep 1; done; echo'
+
+go test ./...
+```

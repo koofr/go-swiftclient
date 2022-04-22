@@ -5,68 +5,55 @@ import (
 	"context"
 	"fmt"
 	"io/ioutil"
-	"time"
+	"os"
 
+	"github.com/google/uuid"
 	"github.com/koofr/go-ioutils"
-	"github.com/koofr/go-netutils"
-	. "github.com/koofr/go-swiftclient"
-	"github.com/koofr/go-swiftclient/fakeswift"
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
+
+	. "github.com/koofr/go-swiftclient"
 )
 
 var _ = Describe("Swift", func() {
 	var ctx context.Context
-	var port int
-	var fakeSwift *fakeswift.FakeSwift
+	var baseURL string
+	var container string
 	var swift *Swift
 
-	container := "test-container"
-
-	BeforeEach(func() {
-		var err error
-
-		ctx = context.Background()
-
-		port, err = netutils.UnusedPort()
-		Expect(err).NotTo(HaveOccurred())
-
-		fakeSwift, err = fakeswift.NewFakeSwift(port)
-		Expect(err).NotTo(HaveOccurred())
-
-		swift = NewSwift()
-	})
-
-	AfterEach(func() {
-		if fakeSwift != nil {
-			fakeSwift.Close()
-		}
-	})
-
 	authenticate := func() {
-		url := fmt.Sprintf("http://localhost:%d/auth/v1.0", port)
-		err := swift.AuthenticateV1(ctx, url, "test:tester", "testing")
+		err := swift.AuthenticateV1(ctx, baseURL+"/auth/v1.0", "test:test", "test")
 		Expect(err).NotTo(HaveOccurred())
 	}
 
-	Describe("Auth", func() {
-		It("should authenticate", func() {
-			authenticate()
-			Expect("").To(Equal(""))
-		})
+	BeforeEach(func() {
+		ctx = context.Background()
 
+		baseURL = os.Getenv("SWIFT_BASE_URL")
+		if baseURL == "" {
+			baseURL = "http://localhost:8080"
+		}
+
+		container = uuid.New().String()
+
+		swift = NewSwift()
+
+		authenticate()
+
+		Expect(swift.PutContainer(ctx, container)).To(Succeed())
+
+		err := swift.PutObject(ctx, container, "file.txt", bytes.NewBufferString("12345"))
+		Expect(err).NotTo(HaveOccurred())
+	})
+
+	Describe("Auth", func() {
 		It("should reauthenticate", func() {
 			authenticate()
 
 			err := swift.PutObject(ctx, container, "f1", bytes.NewBufferString("12345"))
 			Expect(err).NotTo(HaveOccurred())
 
-			// swift will forget auth token, client should reauthenticate
-
-			fakeSwift.Close()
-
-			fakeSwift, err = fakeswift.NewFakeSwift(port)
-			Expect(err).NotTo(HaveOccurred())
+			swift.HTTPClient.Headers.Set("X-Auth-Token", "INVALIDTOKEN")
 
 			// first PUT must fail because we cannot cache request reader
 			err = swift.PutObject(ctx, container, "f2", bytes.NewBufferString("12345"))
@@ -83,12 +70,7 @@ var _ = Describe("Swift", func() {
 			_, err := swift.ListObjects(ctx, container, "/", true)
 			Expect(err).NotTo(HaveOccurred())
 
-			// swift will forget auth token, client should reauthenticate
-
-			fakeSwift.Close()
-
-			fakeSwift, err = fakeswift.NewFakeSwift(port)
-			Expect(err).NotTo(HaveOccurred())
+			swift.HTTPClient.Headers.Set("X-Auth-Token", "INVALIDTOKEN")
 
 			// GET must not fail because it's an idempotent request and can be repeated
 			_, err = swift.ListObjects(ctx, container, "/", true)
@@ -97,75 +79,66 @@ var _ = Describe("Swift", func() {
 	})
 
 	Describe("API", func() {
-		BeforeEach(func() {
-			authenticate()
-		})
-
 		Describe("ObjectInfo", func() {
 			It("should get object info", func() {
 				info, err := swift.ObjectInfo(ctx, container, "file.txt")
-
 				Expect(err).NotTo(HaveOccurred())
-
-				modified := time.Date(2013, time.April, 22, 16, 58, 36, 698000000, time.UTC)
 
 				Expect(info).To(Equal(&SwiftObject{
 					Name:         "file.txt",
 					Hash:         "827ccb0eea8a706c4c34a16891f84e7b",
 					Bytes:        5,
 					ContentType:  "text/plain",
-					LastModified: &modified,
+					LastModified: info.LastModified,
 				}))
+				Expect(info.LastModified).NotTo(BeNil())
 			})
 		})
 
 		Describe("GetObject", func() {
 			It("should get object", func() {
 				obj, err := swift.GetObject(ctx, container, "file.txt", nil)
-
 				Expect(err).NotTo(HaveOccurred())
-
 				Expect(obj.Reader).NotTo(BeNil())
-
-				reader := obj.Reader
-				obj.Reader = nil
-
-				modified := time.Date(2013, time.April, 22, 16, 58, 36, 698000000, time.UTC)
+				defer obj.Reader.Close()
 
 				Expect(obj).To(Equal(&SwiftObject{
 					Name:         "file.txt",
 					Hash:         "827ccb0eea8a706c4c34a16891f84e7b",
 					Bytes:        5,
 					ContentType:  "text/plain",
-					LastModified: &modified,
+					LastModified: obj.LastModified,
+					Reader:       obj.Reader,
 				}))
+				Expect(obj.LastModified).NotTo(BeNil())
 
-				data, _ := ioutil.ReadAll(reader)
-				reader.Close()
+				data, err := ioutil.ReadAll(obj.Reader)
+				Expect(err).NotTo(HaveOccurred())
 
 				Expect(string(data)).To(Equal("12345"))
 			})
 
 			It("should get object with slash in name", func() {
-				obj, err := swift.GetObject(ctx, container, "dir1/file1.txt", nil)
-
+				err := swift.PutObject(ctx, container, "test/file.txt", bytes.NewBufferString("0123456789"))
 				Expect(err).NotTo(HaveOccurred())
 
-				Expect(obj.Bytes).To(Equal(int64(10)))
+				obj, err := swift.GetObject(ctx, container, "test/file.txt", nil)
+				Expect(err).NotTo(HaveOccurred())
+				defer obj.Reader.Close()
 
-				obj.Reader.Close()
+				Expect(obj.Bytes).To(Equal(int64(10)))
 			})
 
 			It("should get object range", func() {
-				span := &ioutils.FileSpan{2, 3}
+				span := &ioutils.FileSpan{Start: 2, End: 3}
 				obj, err := swift.GetObject(ctx, container, "file.txt", span)
-
 				Expect(err).NotTo(HaveOccurred())
+				defer obj.Reader.Close()
 
 				Expect(obj.Bytes).To(Equal(int64(2)))
 
-				data, _ := ioutil.ReadAll(obj.Reader)
-				obj.Reader.Close()
+				data, err := ioutil.ReadAll(obj.Reader)
+				Expect(err).NotTo(HaveOccurred())
 
 				Expect(string(data)).To(Equal("34"))
 			})
@@ -185,7 +158,7 @@ var _ = Describe("Swift", func() {
 			})
 
 			It("should not put object if body is broken", func() {
-				body := &ioutils.ErrorReader{fmt.Errorf("Broken body")}
+				body := ioutils.NewErrorReader(fmt.Errorf("Broken body"))
 
 				err := swift.PutObject(ctx, container, "error.txt", body)
 				Expect(err).To(HaveOccurred())
