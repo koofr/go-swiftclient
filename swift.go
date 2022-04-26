@@ -138,6 +138,21 @@ func (s *Swift) PutContainer(ctx context.Context, container string) (err error) 
 	return nil
 }
 
+func (s *Swift) DeleteContainer(ctx context.Context, container string) (err error) {
+	_, err = s.Request(&httpclient.RequestData{
+		Context:        ctx,
+		Method:         "DELETE",
+		Path:           s.Path(container, ""),
+		ExpectedStatus: []int{http.StatusNoContent},
+		RespConsume:    true,
+	})
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
 func (s *Swift) ListObjects(ctx context.Context, container string, path string, recursive bool) (objects []*SwiftObject, err error) {
 	objects = []*SwiftObject{}
 

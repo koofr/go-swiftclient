@@ -5,9 +5,11 @@ import (
 	"context"
 	"fmt"
 	"io/ioutil"
+	"net/http"
 	"os"
 
 	"github.com/google/uuid"
+	"github.com/koofr/go-httpclient"
 	"github.com/koofr/go-ioutils"
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
@@ -91,6 +93,53 @@ var _ = Describe("Swift", func() {
 	})
 
 	Describe("API", func() {
+		Describe("PutContainer", func() {
+			It("should create a new container", func() {
+				container := uuid.New().String()
+
+				_, err := swift.ListObjects(ctx, container, "", false)
+				Expect(httpclient.IsInvalidStatusCode(err, http.StatusNotFound)).To(BeTrue())
+
+				Expect(swift.PutContainer(ctx, container)).To(Succeed())
+
+				_, err = swift.ListObjects(ctx, container, "", false)
+				Expect(err).NotTo(HaveOccurred())
+			})
+
+			It("should not fail if a container already exists", func() {
+				container := uuid.New().String()
+
+				Expect(swift.PutContainer(ctx, container)).To(Succeed())
+				Expect(swift.PutContainer(ctx, container)).To(Succeed())
+			})
+		})
+
+		Describe("DeleteContainer", func() {
+			It("should delete an empty container", func() {
+				container := uuid.New().String()
+
+				Expect(swift.PutContainer(ctx, container)).To(Succeed())
+
+				Expect(swift.DeleteContainer(ctx, container)).To(Succeed())
+			})
+
+			It("should fail to delete a non-empty container", func() {
+				container := uuid.New().String()
+
+				Expect(swift.PutContainer(ctx, container)).To(Succeed())
+
+				Expect(swift.PutObject(ctx, container, "file.txt", bytes.NewBufferString("12345"))).To(Succeed())
+
+				err := swift.DeleteContainer(ctx, container)
+				Expect(httpclient.IsInvalidStatusCode(err, http.StatusConflict)).To(BeTrue())
+			})
+
+			It("should fail for a non-existent container", func() {
+				err := swift.DeleteContainer(ctx, uuid.New().String())
+				Expect(httpclient.IsInvalidStatusCode(err, http.StatusNotFound)).To(BeTrue())
+			})
+		})
+
 		Describe("ListObjects", func() {
 			It("should list objects (non-recursive)", func() {
 				err := swift.PutObject(ctx, container, "test/file1.txt", bytes.NewBufferString("12345"))
