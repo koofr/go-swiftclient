@@ -20,5 +20,5 @@ docker run --rm -it -p 8080:8080 bancek/ceph-rgw-swift-test:0.1.0-nautilus
 
 sh -c 'while ! curl --fail -H "X-Auth-User: test:test" -H "X-Auth-Key: test" http://localhost:8080/auth/v1.0 2>/dev/null; do echo "waiting for swift" && sleep 1; done; echo'
 
-go test ./...
+go test -v ./...
 ```
